@@ -81,7 +81,9 @@ class SetBirthReverse:
                         details={"status": response.status_code},
                     )
 
-                logger.debug(f"SetBirthReverse: Request successful, {response.status_code}")
+                logger.debug(
+                    f"SetBirthReverse: Request successful, {response.status_code}"
+                )
 
                 return response
 
@@ -90,11 +92,6 @@ class SetBirthReverse:
         except Exception as e:
             # Handle upstream exception
             if isinstance(e, UpstreamException):
-                status = None
-                if e.details and "status" in e.details:
-                    status = e.details["status"]
-                else:
-                    status = getattr(e, "status_code", None)
                 raise
 
             # Handle other non-upstream exceptions

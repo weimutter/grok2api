@@ -11,7 +11,11 @@ from loguru import logger
 
 # Provide logging.Logger compatibility for legacy calls
 if not hasattr(logger, "isEnabledFor"):
-    logger.isEnabledFor = lambda _level: True
+
+    def _is_enabled_for(_level: int) -> bool:
+        return True
+
+    logger.isEnabledFor = _is_enabled_for
 
 # 日志目录
 DEFAULT_LOG_DIR = Path(__file__).parent.parent.parent / "logs"
@@ -71,6 +75,7 @@ def _format_json(record) -> str:
         )
 
     return json.dumps(log_entry, ensure_ascii=False)
+
 
 def _env_flag(name: str, default: bool) -> bool:
     raw = os.getenv(name)

@@ -5,8 +5,6 @@ Chat Completions API 路由
 from typing import Any, Dict, List, Optional, Union
 import base64
 import binascii
-import time
-import uuid
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -33,10 +31,14 @@ class MessageItem(BaseModel):
 class VideoConfig(BaseModel):
     """视频生成配置"""
 
-    aspect_ratio: Optional[str] = Field("3:2", description="视频比例: 1280x720(16:9), 720x1280(9:16), 1792x1024(3:2), 1024x1792(2:3), 1024x1024(1:1)")
+    aspect_ratio: Optional[str] = Field(
+        "3:2",
+        description="视频比例: 1280x720(16:9), 720x1280(9:16), 1792x1024(3:2), 1024x1792(2:3), 1024x1024(1:1)",
+    )
     video_length: Optional[int] = Field(6, description="视频时长(秒): 6 / 10 / 15")
     resolution_name: Optional[str] = Field("480p", description="视频分辨率: 480p, 720p")
     preset: Optional[str] = Field("custom", description="风格预设: fun, normal, spicy")
+
 
 class ImageConfig(BaseModel):
     """图片生成配置"""
@@ -52,7 +54,9 @@ class ChatCompletionRequest(BaseModel):
     model: str = Field(..., description="模型名称")
     messages: List[MessageItem] = Field(..., description="消息数组")
     stream: Optional[bool] = Field(None, description="是否流式输出")
-    reasoning_effort: Optional[str] = Field(None, description="推理强度: none/minimal/low/medium/high/xhigh")
+    reasoning_effort: Optional[str] = Field(
+        None, description="推理强度: none/minimal/low/medium/high/xhigh"
+    )
     temperature: Optional[float] = Field(0.8, description="采样温度: 0-2")
     top_p: Optional[float] = Field(0.95, description="nucleus 采样: 0-1")
     # 视频生成配置
@@ -155,6 +159,7 @@ def _image_field(response_format: str) -> str:
         return "url"
     return "b64_json"
 
+
 def _validate_image_config(image_conf: ImageConfig, *, stream: bool):
     n = image_conf.n or 1
     if n < 1 or n > 10:
@@ -183,6 +188,8 @@ def _validate_image_config(image_conf: ImageConfig, *, stream: bool):
             param="image_config.size",
             code="invalid_size",
         )
+
+
 def validate_request(request: ChatCompletionRequest):
     """验证请求参数"""
     # 验证模型
@@ -408,7 +415,11 @@ def validate_request(request: ChatCompletionRequest):
                 param="messages",
                 code="empty_prompt",
             )
-        image_conf = request.image_config or ImageConfig()
+        image_conf = request.image_config or ImageConfig(
+            n=1,
+            size="1024x1024",
+            response_format=None,
+        )
         n = image_conf.n or 1
         if not (1 <= n <= 10):
             raise ValidationException(
@@ -455,7 +466,12 @@ def validate_request(request: ChatCompletionRequest):
 
     # video 验证
     if model_info and model_info.is_video:
-        config = request.video_config or VideoConfig()
+        config = request.video_config or VideoConfig(
+            aspect_ratio="3:2",
+            video_length=6,
+            resolution_name="480p",
+            preset="custom",
+        )
         ratio_map = {
             "1280x720": "16:9",
             "720x1280": "9:16",
@@ -527,10 +543,13 @@ async def chat_completions(request: ChatCompletionRequest):
         is_stream = (
             request.stream if request.stream is not None else get_config("app.stream")
         )
-        image_conf = request.image_config or ImageConfig()
+        image_conf = request.image_config or ImageConfig(
+            n=1,
+            size="1024x1024",
+            response_format=None,
+        )
         _validate_image_config(image_conf, stream=bool(is_stream))
         response_format = _resolve_image_format(image_conf.response_format)
-        response_field = _image_field(response_format)
         n = image_conf.n or 1
 
         token_mgr = await get_token_manager()
@@ -569,10 +588,10 @@ async def chat_completions(request: ChatCompletionRequest):
                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
             )
 
-        content = result.data[0] if result.data else ""
-        return JSONResponse(
-            content=make_chat_response(request.model, content)
+        content = (
+            result.data[0] if isinstance(result.data, list) and result.data else ""
         )
+        return JSONResponse(content=make_chat_response(request.model, content))
 
     if model_info and model_info.is_image:
         prompt, _ = _extract_prompt_images(request.messages)
@@ -580,10 +599,13 @@ async def chat_completions(request: ChatCompletionRequest):
         is_stream = (
             request.stream if request.stream is not None else get_config("app.stream")
         )
-        image_conf = request.image_config or ImageConfig()
+        image_conf = request.image_config or ImageConfig(
+            n=1,
+            size="1024x1024",
+            response_format=None,
+        )
         _validate_image_config(image_conf, stream=bool(is_stream))
         response_format = _resolve_image_format(image_conf.response_format)
-        response_field = _image_field(response_format)
         n = image_conf.n or 1
         size = image_conf.size or "1024x1024"
         aspect_ratio_map = {
@@ -632,7 +654,9 @@ async def chat_completions(request: ChatCompletionRequest):
                 headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
             )
 
-        content = result.data[0] if result.data else ""
+        content = (
+            result.data[0] if isinstance(result.data, list) and result.data else ""
+        )
         usage = result.usage_override
         return JSONResponse(
             content=make_chat_response(request.model, content, usage=usage)
@@ -640,26 +664,42 @@ async def chat_completions(request: ChatCompletionRequest):
 
     if model_info and model_info.is_video:
         # 提取视频配置 (默认值在 Pydantic 模型中处理)
-        v_conf = request.video_config or VideoConfig()
+        v_conf = request.video_config or VideoConfig(
+            aspect_ratio="3:2",
+            video_length=6,
+            resolution_name="480p",
+            preset="custom",
+        )
+
+        stream_flag = (
+            request.stream
+            if request.stream is not None
+            else bool(get_config("app.stream"))
+        )
 
         result = await VideoService.completions(
             model=request.model,
             messages=[msg.model_dump() for msg in request.messages],
-            stream=request.stream,
+            stream=bool(stream_flag),
             reasoning_effort=request.reasoning_effort,
-            aspect_ratio=v_conf.aspect_ratio,
-            video_length=v_conf.video_length,
-            resolution=v_conf.resolution_name,
-            preset=v_conf.preset,
+            aspect_ratio=str(v_conf.aspect_ratio),
+            video_length=int(v_conf.video_length or 6),
+            resolution=str(v_conf.resolution_name),
+            preset=str(v_conf.preset),
         )
     else:
+        stream_flag = (
+            request.stream
+            if request.stream is not None
+            else bool(get_config("app.stream"))
+        )
         result = await ChatService.completions(
             model=request.model,
             messages=[msg.model_dump() for msg in request.messages],
-            stream=request.stream,
+            stream=bool(stream_flag),
             reasoning_effort=request.reasoning_effort,
-            temperature=request.temperature,
-            top_p=request.top_p,
+            temperature=float(request.temperature or 0.8),
+            top_p=float(request.top_p or 0.95),
         )
 
     if isinstance(result, dict):

@@ -1,10 +1,17 @@
 import os
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import verify_app_key
 from app.core.config import config
-from app.core.storage import get_storage, LocalStorage, RedisStorage, SQLStorage
+from app.core.storage import (
+    get_storage as resolve_storage,
+    LocalStorage,
+    RedisStorage,
+    SQLStorage,
+)
 
 router = APIRouter()
 
@@ -23,7 +30,7 @@ async def get_config():
 
 
 @router.post("/config", dependencies=[Depends(verify_app_key)])
-async def update_config(data: dict):
+async def update_config(data: dict[str, Any]):
     """更新配置"""
     try:
         await config.update(data)
@@ -33,11 +40,11 @@ async def update_config(data: dict):
 
 
 @router.get("/storage", dependencies=[Depends(verify_app_key)])
-async def get_storage():
+async def get_storage_mode():
     """获取当前存储模式"""
     storage_type = os.getenv("SERVER_STORAGE_TYPE", "").lower()
     if not storage_type:
-        storage = get_storage()
+        storage = resolve_storage()
         if isinstance(storage, LocalStorage):
             storage_type = "local"
         elif isinstance(storage, RedisStorage):
