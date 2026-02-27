@@ -1,5 +1,7 @@
 (() => {
   const modelSelect = document.getElementById('modelSelect');
+  const modelChip = modelSelect ? modelSelect.closest('.model-chip') : null;
+  const modelIcon = modelChip ? modelChip.querySelector('.model-icon') : null;
   const reasoningSelect = document.getElementById('reasoningSelect');
   const tempRange = document.getElementById('tempRange');
   const tempValue = document.getElementById('tempValue');
@@ -24,6 +26,33 @@
   let abortController = null;
   let attachment = null;
   const feedbackUrl = 'https://github.com/chenyme/grok2api/issues/new';
+
+  const MODEL_KIND_ICONS = {
+    thinking: '<path d="M12 3a7 7 0 0 0-4 12.74V18a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26A7 7 0 0 0 12 3z"></path><path d="M9 22h6"></path>',
+    mini: '<rect x="7" y="7" width="10" height="10" rx="2"></rect><path d="M9 1v2"></path><path d="M15 1v2"></path><path d="M9 21v2"></path><path d="M15 21v2"></path><path d="M1 9h2"></path><path d="M1 15h2"></path><path d="M21 9h2"></path><path d="M21 15h2"></path>',
+    fast: '<path d="M13 2L4 14h6l-1 8 9-12h-6z"></path>',
+    beta: '<path d="M5 3h8a4 4 0 0 1 0 8H5z"></path><path d="M5 11h9a4 4 0 0 1 0 8H5z"></path>',
+    default: '<circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l2.5 2.5"></path>'
+  };
+
+  function detectModelKind(modelId) {
+    const id = String(modelId || '').toLowerCase();
+    if (!id) return 'default';
+    if (id.includes('thinking')) return 'thinking';
+    if (id.includes('mini')) return 'mini';
+    if (id.includes('fast') || id.includes('turbo')) return 'fast';
+    if (id.includes('beta') || id.includes('preview')) return 'beta';
+    return 'default';
+  }
+
+  function updateModelChipVisual() {
+    if (!modelChip || !modelSelect) return;
+    const kind = detectModelKind(modelSelect.value);
+    modelChip.dataset.modelKind = kind;
+    if (modelIcon) {
+      modelIcon.innerHTML = MODEL_KIND_ICONS[kind] || MODEL_KIND_ICONS.default;
+    }
+  }
 
   function toast(message, type) {
     if (typeof showToast === 'function') {
@@ -696,6 +725,34 @@
       });
       modelSelect.value = preferred;
     }
+
+    if (modelChip) {
+      modelChip.classList.add('compact');
+    }
+    updateModelChipVisual();
+  }
+
+  function bindModelChip() {
+    if (!modelSelect || !modelChip) return;
+
+    modelChip.addEventListener('click', (event) => {
+      if (!modelChip.classList.contains('compact')) return;
+      event.preventDefault();
+      modelChip.classList.remove('compact');
+      modelChip.classList.add('expanded');
+      modelSelect.focus();
+    });
+
+    modelSelect.addEventListener('change', () => {
+      updateModelChipVisual();
+      modelChip.classList.remove('expanded');
+      modelChip.classList.add('compact');
+    });
+
+    modelSelect.addEventListener('blur', () => {
+      modelChip.classList.remove('expanded');
+      modelChip.classList.add('compact');
+    });
   }
 
   function showAttachmentBadge() {
@@ -1030,6 +1087,8 @@
         }
       });
     }
+
+    bindModelChip();
     if (attachBtn && fileInput) {
       attachBtn.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', () => {
